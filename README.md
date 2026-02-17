@@ -41,6 +41,13 @@ The recorder pulls directly from the camera to ensure recording stability, then 
     - **Web Interface**: [http://localhost:3000](http://localhost:3000)
     - **Live HLS Stream**: [http://localhost:8888/cam1_monitor/index.m3u8](http://localhost:8888/cam1_monitor/index.m3u8)
 
+## TODO
+
+- support multiple cameras
+- support live monitoring on iOS
+- support recordings timeline scrubbing
+- support timeline export
+
 ## Troubleshooting
 
 ### No Audio / Stalled Stream

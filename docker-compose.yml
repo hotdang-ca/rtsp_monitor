@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    ports:
+      - "8554:8554" # RTSP
+      - "1935:1935" # RTMP
+      - "8888:8888" # HLS
+      - "8889:8889" # WebRTC
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml
+    restart: unless-stopped
+
+  recorder:
+    build: ./recorder
+    container_name: recorder
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./recordings:/app/recordings
+    environment:
+      - RTSP_SOURCE=${RTSP_SOURCE}
+    depends_on:
+      - mediamtx
+    restart: unless-stopped

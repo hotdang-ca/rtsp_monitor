@@ -20,7 +20,8 @@ services:
     volumes:
       - ./recordings:/app/recordings
     environment:
-      - RTSP_SOURCE=${RTSP_SOURCE}
+      - RTSP_SOURCE_1=${RTSP_SOURCE_1}
+      - RTSP_SOURCE_2=${RTSP_SOURCE_2}
     depends_on:
       - mediamtx
     restart: unless-stopped

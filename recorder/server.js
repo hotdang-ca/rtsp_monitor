@@ -6,21 +6,64 @@ const cors = require('cors');
 
 const app = express();
 const PORT = 3000;
-const RECORDINGS_DIR = path.join(__dirname, 'recordings');
-const RTSP_URL = process.env.RTSP_SOURCE;
+const RECORDINGS_BASE_DIR = path.join(__dirname, 'recordings');
 
-// Ensure recordings directory exists
-if (!fs.existsSync(RECORDINGS_DIR)) {
-    fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+// access the RTSP streams from the environment variables
+const CAMERAS = [];
+if (process.env.RTSP_SOURCE_1) {
+    CAMERAS.push({
+        id: 'cam1',
+        name: 'Camera 1',
+        url: process.env.RTSP_SOURCE_1,
+        rtspPath: 'cam1_monitor'
+    });
 }
+if (process.env.RTSP_SOURCE_2) {
+    CAMERAS.push({
+        id: 'cam2',
+        name: 'Camera 2',
+        url: process.env.RTSP_SOURCE_2,
+        rtspPath: 'cam2_monitor'
+    });
+}
+
+// Fallback for single source compatibility or testing if only RTSP_SOURCE is set
+if (CAMERAS.length === 0 && process.env.RTSP_SOURCE) {
+    CAMERAS.push({
+        id: 'cam1',
+        name: 'Camera 1',
+        url: process.env.RTSP_SOURCE,
+        rtspPath: 'cam1_monitor'
+    });
+}
+
+// Ensure recordings directories exist
+CAMERAS.forEach(cam => {
+    const camDir = path.join(RECORDINGS_BASE_DIR, cam.id);
+    if (!fs.existsSync(camDir)) {
+        fs.mkdirSync(camDir, { recursive: true });
+    }
+});
 
 app.use(cors());
 app.use(express.static('public'));
-app.use('/recordings', express.static(RECORDINGS_DIR));
+app.use('/recordings', express.static(RECORDINGS_BASE_DIR));
 
-// API to list recordings
-app.get('/api/recordings', (req, res) => {
-    fs.readdir(RECORDINGS_DIR, (err, files) => {
+// API to get camera config
+app.get('/api/config', (req, res) => {
+    res.json(CAMERAS.map(c => ({ id: c.id, name: c.name, rtspPath: c.rtspPath })));
+});
+
+// API to list recordings for a specific camera
+app.get('/api/recordings/:cameraId', (req, res) => {
+    const cameraId = req.params.cameraId;
+    const camDir = path.join(RECORDINGS_BASE_DIR, cameraId);
+
+    if (!fs.existsSync(camDir)) {
+        return res.json([]);
+    }
+
+    fs.readdir(camDir, (err, files) => {
         if (err) {
             return res.status(500).json({ error: 'Failed to list recordings' });
         }
@@ -29,31 +72,32 @@ app.get('/api/recordings', (req, res) => {
     });
 });
 
-let ffmpegCommand = null;
+const ffmpegCommands = {};
 
-function startRecording() {
-    if (!RTSP_URL) {
-        console.error('RTSP_SOURCE environment variable not set. Recording disabled.');
+function startCamera(camera) {
+    if (!camera.url) {
+        console.error(`URL not set for ${camera.name}. Recording disabled.`);
         return;
     }
 
-    console.log(`Starting recording from ${RTSP_URL}...`);
+    const camDir = path.join(RECORDINGS_BASE_DIR, camera.id);
+    console.log(`Starting recording for ${camera.name} from ${camera.url}...`);
 
-    ffmpegCommand = ffmpeg(RTSP_URL)
+    const command = ffmpeg(camera.url)
         .inputOptions([
             '-rtsp_transport', 'tcp',
             '-use_wallclock_as_timestamps', '1',
             '-fflags', '+genpts'
         ])
         // Output 1: RTMP/RTSP stream to MediaMTX for browser viewing (AAC audio)
-        .output('rtsp://mediamtx:8554/cam1_monitor')
+        .output(`rtsp://mediamtx:8554/${camera.rtspPath}`)
         .outputOptions([
             '-c:v copy',
             '-an', // CRITICAL: Camera sends 0 audio packets despite advertising track. Disabling audio avoids FFmpeg stall.
             '-f rtsp'
         ])
         // Output 2: File recording
-        .output(path.join(RECORDINGS_DIR, '%Y-%m-%d_%H-%M-%S.mp4'))
+        .output(path.join(camDir, '%Y-%m-%d_%H-%M-%S.mp4'))
         .outputOptions([
             '-c copy',
             '-f segment',
@@ -62,25 +106,26 @@ function startRecording() {
             '-reset_timestamps 1'
         ])
         .on('start', (commandLine) => {
-            console.log('FFmpeg process started:', commandLine);
+            console.log(`[${camera.name}] FFmpeg process started:`, commandLine);
         })
         .on('stderr', (stderrLine) => {
-            console.log('FFmpeg stderr:', stderrLine);
+            // console.log(`[${camera.name}] FFmpeg stderr:`, stderrLine);
         })
         .on('error', (err, stdout, stderr) => {
-            console.error('FFmpeg error:', err.message);
+            console.error(`[${camera.name}] FFmpeg error:`, err.message);
             // Retry after delay
-            setTimeout(startRecording, 5000);
+            setTimeout(() => startCamera(camera), 5000);
         })
         .on('end', () => {
-            console.log('FFmpeg process ended. Restarting...');
-            setTimeout(startRecording, 1000);
+            console.log(`[${camera.name}] FFmpeg process ended. Restarting...`);
+            setTimeout(() => startCamera(camera), 1000);
         });
 
-    ffmpegCommand.run();
+    ffmpegCommands[camera.id] = command;
+    command.run();
 }
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    startRecording();
+    CAMERAS.forEach(startCamera);
 });

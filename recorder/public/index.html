@@ -8,7 +8,7 @@
     <style>
         body {
             font-family: sans-serif;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
             background: #f0f0f0;
@@ -24,7 +24,41 @@
         }
 
         .video-section {
-            flex: 2;
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .live-streams {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .stream-container {
+            flex: 1;
+            min-width: 45%;
+            background: black;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .stream-label {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        .playback-section {
+            margin-top: 20px;
         }
 
         .list-section {
@@ -33,7 +67,17 @@
             padding: 15px;
             border-radius: 8px;
             height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .list-header {
+            margin-bottom: 10px;
+        }
+
+        .recordings-list {
             overflow-y: auto;
+            flex: 1;
         }
 
         video {
@@ -46,6 +90,7 @@
             cursor: pointer;
             padding: 8px;
             border-bottom: 1px solid #eee;
+            font-size: 14px;
         }
 
         .recording-item:hover {
@@ -55,26 +100,40 @@
         .active {
             background: #d0d0ff;
         }
+
+        select {
+            width: 100%;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 
 <body>
     <h1>Security Camera Monitor</h1>
 
-    <div class="container">
+    <div id="app" class="container">
         <div class="video-section">
-            <h2>Live Stream</h2>
-            <iframe src="http://localhost:8888/cam1_monitor" width="100%" height="400" frameborder="0"
-                scrolling="no"></iframe>
+            <h2>Live Streams</h2>
+            <div id="live-streams" class="live-streams">
+                <!-- Streams injected here -->
+            </div>
 
-            <h2>Playback</h2>
-            <video id="player" controls autoplay></video>
-            <div id="current-file"></div>
+            <div class="playback-section">
+                <h2>Playback</h2>
+                <video id="player" controls autoplay></video>
+                <div id="current-file"></div>
+            </div>
         </div>
 
         <div class="list-section">
-            <h3>Recordings</h3>
-            <div id="recordings-list">Loading...</div>
+            <div class="list-header">
+                <h3>Recordings</h3>
+                <select id="camera-select" onchange="loadRecordings()">
+                    <option value="" disabled selected>Select Camera</option>
+                </select>
+            </div>
+            <div id="recordings-list" class="recordings-list">Select a camera to view recordings...</div>
         </div>
     </div>
 
@@ -82,36 +141,92 @@
         const player = document.getElementById('player');
         const listContainer = document.getElementById('recordings-list');
         const currentFileDisplay = document.getElementById('current-file');
+        const liveStreamsContainer = document.getElementById('live-streams');
+        const cameraSelect = document.getElementById('camera-select');
+
+        let cameras = [];
+
+        async function init() {
+            try {
+                const res = await fetch('/api/config');
+                cameras = await res.json();
+
+                // Setup live streams
+                cameras.forEach(cam => {
+                    const div = document.createElement('div');
+                    div.className = 'stream-container';
+                    div.innerHTML = `
+                        <div class="stream-label">${cam.name}</div>
+                        <iframe src="http://localhost:8888/${cam.rtspPath}" width="100%" height="350" frameborder="0" scrolling="no"></iframe>
+                    `;
+                    liveStreamsContainer.appendChild(div);
+
+                    // Add to select dropdown
+                    const option = document.createElement('option');
+                    option.value = cam.id;
+                    option.textContent = cam.name;
+                    cameraSelect.appendChild(option);
+                });
+
+                // Select first camera by default
+                if (cameras.length > 0) {
+                    cameraSelect.value = cameras[0].id;
+                    loadRecordings();
+                }
+
+            } catch (err) {
+                console.error('Failed to load init config:', err);
+                liveStreamsContainer.innerHTML = '<p>Error loading configuration</p>';
+            }
+        }
 
         async function loadRecordings() {
+            const cameraId = cameraSelect.value;
+            if (!cameraId) return;
+
+            listContainer.innerHTML = 'Loading...';
+
             try {
-                const response = await fetch('/api/recordings');
+                const response = await fetch(`/api/recordings/${cameraId}`);
                 const files = await response.json();
 
                 listContainer.innerHTML = '';
+                if (files.length === 0) {
+                    listContainer.innerHTML = '<div style="padding:10px; color:#666;">No recordings found</div>';
+                    return;
+                }
+
                 files.forEach(file => {
                     const div = document.createElement('div');
                     div.className = 'recording-item';
                     div.textContent = file;
-                    div.onclick = () => playFile(file, div);
+                    div.onclick = () => playFile(cameraId, file, div);
                     listContainer.appendChild(div);
                 });
             } catch (err) {
                 console.error('Error loading recordings:', err);
+                listContainer.innerHTML = 'Error loading recordings';
             }
         }
 
-        function playFile(filename, element) {
-            player.src = `/recordings/${filename}`;
-            currentFileDisplay.textContent = `Playing: ${filename}`;
+        function playFile(cameraId, filename, element) {
+            player.src = `/recordings/${cameraId}/${filename}`;
+            currentFileDisplay.textContent = `Playing: ${filename} (${chainIdToName(cameraId)})`;
 
             document.querySelectorAll('.recording-item').forEach(el => el.classList.remove('active'));
             if (element) element.classList.add('active');
         }
 
+        function chainIdToName(id) {
+            const cam = cameras.find(c => c.id === id);
+            return cam ? cam.name : id;
+        }
+
         // Auto-refresh list every 10 seconds
-        loadRecordings();
         setInterval(loadRecordings, 10000);
+
+        // Start
+        init();
     </script>
 </body>
 

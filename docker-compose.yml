@@ -11,6 +11,8 @@ services:
     volumes:
       - ./mediamtx.yml:/mediamtx.yml
     restart: unless-stopped
+    env_file:
+      - .env
 
   recorder:
     build: ./recorder
@@ -19,9 +21,8 @@ services:
       - "3000:3000"
     volumes:
       - ./recordings:/app/recordings
-    environment:
-      - RTSP_SOURCE_1=${RTSP_SOURCE_1}
-      - RTSP_SOURCE_2=${RTSP_SOURCE_2}
     depends_on:
       - mediamtx
     restart: unless-stopped
+    env_file:
+      - .env

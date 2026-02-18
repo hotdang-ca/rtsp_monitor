@@ -24,9 +24,10 @@ The recorder pulls directly from the camera to ensure recording stability, then 
     ```bash
     cp .env.example .env
     ```
-    Edit `.env` and set your `RTSP_SOURCE` URL:
+    Edit `.env` and set your `RTSP_SOURCE_1`, `RTSP_SOURCE_2`, etc. URLs:
     ```ini
-    RTSP_SOURCE=rtsp://user:password@192.168.1.50:554/stream
+    RTSP_SOURCE_1=rtsp://user:password@192.168.1.50:554/stream
+    RTSP_SOURCE_2=rtsp://user:password@192.168.1.51:554/stream
     ```
 
 2.  **Network Configuration**:
@@ -43,10 +44,10 @@ The recorder pulls directly from the camera to ensure recording stability, then 
 
 ## TODO
 
-- support multiple cameras
-- support live monitoring on iOS
-- support recordings timeline scrubbing
-- support timeline export
+- [x] support multiple cameras
+- [ ] support live monitoring on iOS
+- [ ] support recordings timeline scrubbing
+- [ ] support timeline export
 
 ## Troubleshooting
 

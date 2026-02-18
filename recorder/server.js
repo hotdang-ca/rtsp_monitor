@@ -11,6 +11,7 @@ const RECORDINGS_BASE_DIR = path.join(__dirname, 'recordings');
 // access the RTSP streams from the environment variables
 const CAMERAS = [];
 if (process.env.RTSP_SOURCE_1) {
+    console.log('RTSP_SOURCE_1: ' + process.env.RTSP_SOURCE_1);
     CAMERAS.push({
         id: 'cam1',
         name: 'Camera 1',
@@ -19,11 +20,48 @@ if (process.env.RTSP_SOURCE_1) {
     });
 }
 if (process.env.RTSP_SOURCE_2) {
+    console.log('RTSP_SOURCE_2: ' + process.env.RTSP_SOURCE_2);
     CAMERAS.push({
         id: 'cam2',
         name: 'Camera 2',
         url: process.env.RTSP_SOURCE_2,
         rtspPath: 'cam2_monitor'
+    });
+}
+if (process.env.RTSP_SOURCE_3) {
+    console.log('RTSP_SOURCE_3: ' + process.env.RTSP_SOURCE_3);
+    CAMERAS.push({
+        id: 'cam3',
+        name: 'Camera 3',
+        url: process.env.RTSP_SOURCE_3,
+        rtspPath: 'cam3_monitor'
+    });
+}
+if (process.env.RTSP_SOURCE_4) {
+    console.log('RTSP_SOURCE_4: ' + process.env.RTSP_SOURCE_4);
+    CAMERAS.push({
+        id: 'cam4',
+        name: 'Camera 4',
+        url: process.env.RTSP_SOURCE_4,
+        rtspPath: 'cam4_monitor'
+    });
+}
+if (process.env.RTSP_SOURCE_5) {
+    console.log('RTSP_SOURCE_5: ' + process.env.RTSP_SOURCE_5);
+    CAMERAS.push({
+        id: 'cam5',
+        name: 'Camera 5',
+        url: process.env.RTSP_SOURCE_5,
+        rtspPath: 'cam5_monitor'
+    });
+}
+if (process.env.RTSP_SOURCE_6) {
+    console.log('RTSP_SOURCE_6: ' + process.env.RTSP_SOURCE_6);
+    CAMERAS.push({
+        id: 'cam6',
+        name: 'Camera 6',
+        url: process.env.RTSP_SOURCE_6,
+        rtspPath: 'cam6_monitor'
     });
 }
 
@@ -127,5 +165,6 @@ function startCamera(camera) {
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log('Found ' + CAMERAS.length + ' cameras defined');
     CAMERAS.forEach(startCamera);
 });

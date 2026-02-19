@@ -2,6 +2,8 @@
 
 A simple, Dockerized solution to monitor RTSP security cameras and record continuous 10-second video clips.
 
+![screenshot of the main interface](./screenshot.png)
+
 ## Why this?
 
 It was difficult to find a free and **SIMPLE** RTSP monitor and recorder. While several projects do exist, they do not check the boxes for being both free and simple.

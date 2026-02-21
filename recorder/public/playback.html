@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RTSP Monitor Playback</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            margin: 0;
+            text-align: center;
+            flex-grow: 1;
+        }
+
+        .back-link {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        .back-link:hover {
+            background: #5a6268;
+        }
+
+        .controls-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        .player-container {
+            background: black;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+
+        video {
+            width: 100%;
+            max-height: 70vh;
+            aspect-ratio: 16 / 9;
+            object-fit: contain;
+            border-radius: 4px;
+            background: #000;
+        }
+
+        .current-info {
+            color: #ccc;
+            margin-top: 10px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .timeline-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .timeline-track {
+            height: 40px;
+            background: #e9ecef;
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .timeline-segment {
+            position: absolute;
+            height: 100%;
+            background: #007bff;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .timeline-segment:hover {
+            opacity: 1;
+        }
+
+        .timeline-segment.active {
+            background: #28a745;
+            opacity: 1;
+        }
+
+        .timeline-cursor {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: red;
+            pointer-events: none;
+            display: none;
+        }
+
+        .timeline-tooltip {
+            position: absolute;
+            top: 5px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            display: none;
+            z-index: 10;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            z-index: 1000;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <a href="/" class="back-link">Back to Live</a>
+        <h1>Timeline Playback</h1>
+        <div style="width: 120px;"></div> <!-- Spacer for flex layout -->
+    </div>
+
+    <div class="controls-container">
+        <div class="control-group">
+            <label for="camera-select">Camera:</label>
+            <select id="camera-select"></select>
+        </div>
+        <div class="control-group">
+            <label for="date-select">Date:</label>
+            <select id="date-select" disabled>
+                <option value="">Select a date...</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="player-container">
+        <video id="player" controls autoplay></video>
+        <div id="current-info" class="current-info">Select a camera and date to begin playback</div>
+    </div>
+
+    <div class="timeline-container">
+        <div class="timeline-header">
+            <span>00:00</span>
+            <span>06:00</span>
+            <span>12:00</span>
+            <span>18:00</span>
+            <span>23:59</span>
+        </div>
+        <div class="timeline-track" id="timeline-track">
+            <div id="timeline-tooltip" class="timeline-tooltip"></div>
+            <div id="timeline-cursor" class="timeline-cursor"></div>
+            <!-- Segments injected here -->
+        </div>
+    </div>
+
+    <div id="loading" class="loading-overlay">Loading timeline data...</div>
+
+    <script>
+        const player = document.getElementById('player');
+        const cameraSelect = document.getElementById('camera-select');
+        const dateSelect = document.getElementById('date-select');
+        const timelineTrack = document.getElementById('timeline-track');
+        const timelineTooltip = document.getElementById('timeline-tooltip');
+        const timelineCursor = document.getElementById('timeline-cursor');
+        const currentInfoDisplay = document.getElementById('current-info');
+        const loadingOverlay = document.getElementById('loading');
+
+        let cameras = [];
+        let availableDates = [];
+        let currentRecordings = []; // array of { filename, startTime, percentOfDay }
+        let currentPlayingIndex = -1;
+
+        // Utilities
+        function parseFilenameTime(filename) {
+            // Expected: YYYY-MM-DD_HH-MM-SS.mp4
+            const timePart = filename.split('_')[1].split('.')[0];
+            const [hours, minutes, seconds] = timePart.split('-').map(Number);
+            return { hours, minutes, seconds };
+        }
+
+        function calculatePercentOfDay(hours, minutes, seconds) {
+            const totalSecondsInDay = 24 * 60 * 60;
+            const currentSeconds = (hours * 3600) + (minutes * 60) + seconds;
+            return (currentSeconds / totalSecondsInDay) * 100;
+        }
+
+        function formatTime(hours, minutes, seconds) {
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function showLoading() { loadingOverlay.style.display = 'flex'; }
+        function hideLoading() { loadingOverlay.style.display = 'none'; }
+
+        // Initialization
+        async function init() {
+            try {
+                const res = await fetch('/api/config');
+                cameras = await res.json();
+
+                cameras.forEach(cam => {
+                    const option = document.createElement('option');
+                    option.value = cam.id;
+                    option.textContent = cam.name;
+                    cameraSelect.appendChild(option);
+                });
+
+                cameraSelect.addEventListener('change', onCameraChange);
+                dateSelect.addEventListener('change', onDateChange);
+
+                // Timeline interactions
+                timelineTrack.addEventListener('mousemove', onTimelineHover);
+                timelineTrack.addEventListener('mouseleave', () => timelineTooltip.style.display = 'none');
+                timelineTrack.addEventListener('click', onTimelineClick);
+
+                // Continuous playback logic
+                player.addEventListener('ended', playNextSegment);
+
+                if (cameras.length > 0) {
+                    cameraSelect.value = cameras[0].id;
+                    await onCameraChange();
+                }
+
+            } catch (err) {
+                console.error('Initialization failed:', err);
+                alert('Failed to load configuration.');
+            }
+        }
+
+        // Event Handlers
+        async function onCameraChange() {
+            const cameraId = cameraSelect.value;
+            if (!cameraId) return;
+
+            dateSelect.disabled = true;
+            dateSelect.innerHTML = '<option value="">Loading dates...</option>';
+            clearTimeline();
+
+            try {
+                const res = await fetch(`/api/recordings/${cameraId}/dates`);
+                availableDates = await res.json();
+
+                dateSelect.innerHTML = '';
+                if (availableDates.length === 0) {
+                    dateSelect.innerHTML = '<option value="">No recordings available</option>';
+                    return;
+                }
+
+                availableDates.forEach(date => {
+                    const option = document.createElement('option');
+                    option.value = date;
+                    option.textContent = date;
+                    dateSelect.appendChild(option);
+                });
+
+                dateSelect.disabled = false;
+                dateSelect.value = availableDates[0];
+                await onDateChange();
+
+            } catch (err) {
+                console.error('Failed to load dates:', err);
+                dateSelect.innerHTML = '<option value="">Error loading dates</option>';
+            }
+        }
+
+        async function onDateChange() {
+            const cameraId = cameraSelect.value;
+            const date = dateSelect.value;
+
+            if (!cameraId || !date) return;
+
+            showLoading();
+            clearTimeline();
+
+            try {
+                const res = await fetch(`/api/recordings/${cameraId}?date=${date}`);
+                const files = await res.json();
+
+                // Build timeline data
+                currentRecordings = files.map(filename => {
+                    const time = parseFilenameTime(filename);
+                    const percent = calculatePercentOfDay(time.hours, time.minutes, time.seconds);
+                    return {
+                        filename,
+                        time,
+                        percentOfDay: percent,
+                        element: null // will store the DOM node
+                    };
+                });
+
+                renderTimeline();
+
+                // Auto-play the first recording of the day if available
+                if (currentRecordings.length > 0) {
+                    playSegment(0);
+                }
+
+            } catch (err) {
+                console.error('Failed to load recordings:', err);
+                alert('Error loading recordings for selected date.');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function renderTimeline() {
+            const fragment = document.createDocumentFragment();
+            // Since clips are ~10s, a strict width percentage might be too small to click
+            // So we give them a minimum visual width (e.g., 2px) and use Left position based on time.
+
+            currentRecordings.forEach((record, index) => {
+                const segment = document.createElement('div');
+                segment.className = 'timeline-segment';
+                segment.style.left = `${record.percentOfDay}%`;
+                // Assume 10s clip is roughly (10 / 86400) * 100 = 0.011%, which is tiny.
+                // We fake a slightly thicker line (e.g. 0.1% or 2px min-width) so it's visible.
+                segment.style.width = 'max(2px, 0.05%)';
+
+                // Allow direct clicking on the segment if possible
+                segment.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    playSegment(index);
+                });
+
+                record.element = segment;
+                fragment.appendChild(segment);
+            });
+
+            timelineTrack.appendChild(fragment);
+        }
+
+        function clearTimeline() {
+            player.pause();
+            player.src = '';
+            currentRecordings = [];
+            currentPlayingIndex = -1;
+
+            // Remove existing segments
+            const segments = timelineTrack.querySelectorAll('.timeline-segment');
+            segments.forEach(s => s.remove());
+
+            timelineCursor.style.display = 'none';
+            currentInfoDisplay.textContent = 'Select a camera and date to begin playback';
+        }
+
+        function playSegment(index) {
+            if (index < 0 || index >= currentRecordings.length) return;
+
+            const record = currentRecordings[index];
+            const cameraId = cameraSelect.value;
+
+            player.src = `/recordings/${cameraId}/${record.filename}`;
+            player.play().catch(e => console.error("Playback prevented:", e));
+
+            currentPlayingIndex = index;
+
+            const timeStr = formatTime(record.time.hours, record.time.minutes, record.time.seconds);
+            currentInfoDisplay.textContent = `Playing: ${timeStr} (${record.filename})`;
+
+            // Update UI
+            document.querySelectorAll('.timeline-segment').forEach(el => el.classList.remove('active'));
+            if (record.element) {
+                record.element.classList.add('active');
+            }
+
+            // Move cursor to indicate current position roughly
+            timelineCursor.style.left = `${record.percentOfDay}%`;
+            timelineCursor.style.display = 'block';
+        }
+
+        function playNextSegment() {
+            if (currentPlayingIndex !== -1 && currentPlayingIndex + 1 < currentRecordings.length) {
+                playSegment(currentPlayingIndex + 1);
+            } else {
+                currentInfoDisplay.textContent += ' [End of timeline for this day]';
+            }
+        }
+
+        function onTimelineHover(e) {
+            if (currentRecordings.length === 0) return;
+
+            const rect = timelineTrack.getBoundingClientRect();
+            const px = e.clientX - rect.left;
+            const percent = (px / rect.width) * 100;
+
+            // Calculate what time this percentage represents
+            const totalSecondsInDay = 24 * 60 * 60;
+            const targetSeconds = (percent / 100) * totalSecondsInDay;
+
+            const h = Math.floor(targetSeconds / 3600);
+            const m = Math.floor((targetSeconds % 3600) / 60);
+            const s = Math.floor(targetSeconds % 60);
+
+            timelineTooltip.textContent = formatTime(h, m, s);
+            timelineTooltip.style.left = `${px}px`;
+            timelineTooltip.style.display = 'block';
+            timelineTooltip.style.border = '1px solid red';
+        }
+
+        function onTimelineClick(e) {
+            if (currentRecordings.length === 0) return;
+
+            const rect = timelineTrack.getBoundingClientRect();
+            const px = e.clientX - rect.left;
+            const percent = (px / rect.width) * 100;
+
+            // Find the closest recording to this percentage
+            let closestIndex = -1;
+            let minDiff = Infinity;
+
+            currentRecordings.forEach((record, idx) => {
+                const diff = Math.abs(record.percentOfDay - percent);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIndex = idx;
+                }
+            });
+
+            if (closestIndex !== -1) {
+                playSegment(closestIndex);
+            }
+        }
+
+        // Run
+        init();
+    </script>
+</body>
+
+</html>

@@ -92,8 +92,8 @@ app.get('/api/config', (req, res) => {
     res.json(CAMERAS.map(c => ({ id: c.id, name: c.name, rtspPath: c.rtspPath })));
 });
 
-// API to list recordings for a specific camera
-app.get('/api/recordings/:cameraId', (req, res) => {
+// API to get available dates for a specific camera
+app.get('/api/recordings/:cameraId/dates', (req, res) => {
     const cameraId = req.params.cameraId;
     const camDir = path.join(RECORDINGS_BASE_DIR, cameraId);
 
@@ -105,7 +105,46 @@ app.get('/api/recordings/:cameraId', (req, res) => {
         if (err) {
             return res.status(500).json({ error: 'Failed to list recordings' });
         }
-        const mp4Files = files.filter(file => file.endsWith('.mp4')).sort().reverse();
+
+        const dates = new Set();
+        files.filter(file => file.endsWith('.mp4')).forEach(file => {
+            // Filename format expected: YYYY-MM-DD_HH-MM-SS.mp4
+            const datePart = file.split('_')[0];
+            if (datePart && datePart.length === 10) {
+                dates.add(datePart);
+            }
+        });
+
+        res.json(Array.from(dates).sort().reverse());
+    });
+});
+
+// API to list recordings for a specific camera
+app.get('/api/recordings/:cameraId', (req, res) => {
+    const cameraId = req.params.cameraId;
+    const dateQuery = req.query.date; // Optional: YYYY-MM-DD
+    const camDir = path.join(RECORDINGS_BASE_DIR, cameraId);
+
+    if (!fs.existsSync(camDir)) {
+        return res.json([]);
+    }
+
+    fs.readdir(camDir, (err, files) => {
+        if (err) {
+            return res.status(500).json({ error: 'Failed to list recordings' });
+        }
+
+        let mp4Files = files.filter(file => file.endsWith('.mp4'));
+
+        if (dateQuery) {
+            mp4Files = mp4Files.filter(file => file.startsWith(dateQuery));
+            // When querying by date (usually for playback), return in chronological order
+            mp4Files.sort();
+        } else {
+            // Default: newest first
+            mp4Files.sort().reverse();
+        }
+
         res.json(mp4Files);
     });
 });

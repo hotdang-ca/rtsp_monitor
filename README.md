@@ -50,6 +50,7 @@ The recorder pulls directly from the camera to ensure recording stability, then 
 - [ ] support live monitoring on iOS
 - [x] support recordings timeline scrubbing
 - [ ] support timeline export
+- [ ] support selecting recording quality (and therefore, size)
 
 ## Troubleshooting
 

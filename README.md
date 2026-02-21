@@ -48,7 +48,7 @@ The recorder pulls directly from the camera to ensure recording stability, then 
 
 - [x] support multiple cameras
 - [ ] support live monitoring on iOS
-- [ ] support recordings timeline scrubbing
+- [x] support recordings timeline scrubbing
 - [ ] support timeline export
 
 ## Troubleshooting
